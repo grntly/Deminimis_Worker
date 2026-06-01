@@ -163,6 +163,106 @@ try {
   const records = await page.evaluate(() => {
     const textOf = (el) => (el ? (el.textContent || '').replace(/\s+/g, ' ').trim() : '');
 
+    const afterLabelInBrowser = (text, label) => {
+      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const rx = new RegExp(
+        `${escaped}\\s*(.+?)(?=(Reference number:|Beneficiary name:|Beneficiary ID:|Beneficiary type of ID:|Aid amount in EUR:|Sector of activity \\(NACE\\):|Aid instrument:|Granting authority name:|Granting date:|Published date:|$))`,
+        'i'
+      );
+      const m = text.match(rx);
+      return m ? m[1].trim() : '';
+    };
+
+    const toAbsoluteUrl = (href) => {
+      try {
+        return new URL(href, window.location.href).toString();
+      } catch (_) {
+        return '';
+      }
+    };
+
+    const isGenericRegisterUrl = (href) => {
+      try {
+        const parsed = new URL(href, window.location.href);
+        return parsed.hostname === 'aid-register.ec.europa.eu'
+          && parsed.pathname.replace(/\/+$/, '') === '/de-minimis'
+          && !parsed.search
+          && !parsed.hash;
+      } catch (_) {
+        return true;
+      }
+    };
+
+    const findAwardSourceUrl = (card, referenceNumber) => {
+      const anchors = Array.from(card.querySelectorAll('a[href]'))
+        .map((anchor) => {
+          const href = toAbsoluteUrl(anchor.getAttribute('href'));
+          const label = [
+            textOf(anchor),
+            anchor.getAttribute('aria-label') || '',
+            anchor.getAttribute('title') || '',
+            anchor.getAttribute('href') || ''
+          ].join(' ');
+
+          return {
+            href,
+            label
+          };
+        })
+        .filter((candidate) => {
+          if (!candidate.href) {
+            return false;
+          }
+
+          if (/^(mailto|tel|javascript):/i.test(candidate.href)) {
+            return false;
+          }
+
+          return true;
+        });
+
+      if (!anchors.length) {
+        return window.location.href;
+      }
+
+      const scored = anchors
+        .map((candidate, index) => {
+          let score = 0;
+          const haystack = `${candidate.href} ${candidate.label}`.toLowerCase();
+          const reference = String(referenceNumber || '').toLowerCase();
+
+          if (reference && haystack.includes(reference)) {
+            score += 30;
+          }
+
+          if (/award|aid|de-minimis|detail|reference/.test(haystack)) {
+            score += 8;
+          }
+
+          if (/beneficiar/.test(haystack)) {
+            score -= 10;
+          }
+
+          if (/\.pdf($|\?)/i.test(candidate.href)) {
+            score -= 5;
+          }
+
+          if (isGenericRegisterUrl(candidate.href)) {
+            score -= 50;
+          }
+
+          score -= index;
+
+          return {
+            href: candidate.href,
+            score
+          };
+        })
+        .sort((a, b) => b.score - a.score);
+
+      return scored[0] && scored[0].score > -50 ? scored[0].href : window.location.href;
+    };
+
     const cards = Array.from(document.querySelectorAll('div,section,article,li'))
       .filter((el) => {
         const t = textOf(el);
@@ -172,10 +272,12 @@ try {
     return cards.map((card) => {
       const text = textOf(card);
       const heading = card.querySelector('h1,h2,h3,h4,h5,strong,b');
+      const referenceNumber = afterLabelInBrowser(text, 'Reference number:');
 
       return {
         heading: textOf(heading),
-        fullText: text
+        fullText: text,
+        sourceUrl: findAwardSourceUrl(card, referenceNumber)
       };
     });
   });
@@ -220,7 +322,7 @@ try {
       aid_instrument: aidInstrument,
       granting_date: parseDate(grantingDate),
       published_date: parseDate(publishedDate),
-      source_url: url
+      source_url: row.sourceUrl || url
     };
   }).filter((r) => r.beneficiary_identifier === normalizeKvk(kvk));
 
