@@ -1,90 +1,146 @@
 import { spawn } from 'node:child_process';
 
-const callbackUrl = process.env.CALLBACK_URL;
-const callbackToken = process.env.CALLBACK_TOKEN;
-const jobId = process.env.JOB_ID;
-const customerId = process.env.CUSTOMER_ID;
-const kvk = process.env.KVK;
-const companyName = process.env.COMPANY_NAME || '';
-const sourceUrl = process.env.SOURCE_URL || 'https://aid-register.ec.europa.eu/de-minimis';
-const country = process.env.COUNTRY || 'Netherlands';
-const timeoutMs = Number(process.env.TIMEOUT_MS || '30000');
-const userAgent = process.env.USER_AGENT || 'Mozilla/5.0 (compatible; Grantly DeMinimis Sync/1.2)';
+const rawBatchPayload = process.env.BATCH_PAYLOAD || '';
 
-function required(name, value) {
-  if (!value) {
-    throw new Error(`Missing required env var: ${name}`);
+function parseBatchPayload() {
+  if (!rawBatchPayload) {
+    throw new Error('Missing required env var: BATCH_PAYLOAD');
   }
+
+  let payload;
+  try {
+    payload = JSON.parse(rawBatchPayload);
+  } catch (error) {
+    throw new Error(`BATCH_PAYLOAD is not valid JSON: ${error.message}`);
+  }
+
+  if (!payload.callback_url || !payload.callback_token || !Array.isArray(payload.jobs) || payload.jobs.length === 0) {
+    throw new Error('Batch payload requires callback_url, callback_token and at least one job.');
+  }
+
+  if (payload.jobs.length > 100) {
+    throw new Error('Batch payload cannot contain more than 100 jobs.');
+  }
+
+  return payload;
 }
 
-required('CALLBACK_URL', callbackUrl);
-required('CALLBACK_TOKEN', callbackToken);
-required('JOB_ID', jobId);
-required('CUSTOMER_ID', customerId);
-required('KVK', kvk);
-
-async function postCallback(payload) {
-  console.log('Posting callback to:', callbackUrl);
-  console.log('Callback payload:', JSON.stringify(payload));
-
-  const res = await fetch(callbackUrl, {
+async function postCallback(batch, body) {
+  const response = await fetch(batch.callback_url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${callbackToken}`,
+      Authorization: `Bearer ${batch.callback_token}`,
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
+  const text = await response.text();
 
-  const text = await res.text();
-
-  console.log('Callback status:', res.status);
-  console.log('Callback response:', text);
-
-  if (!res.ok) {
-    throw new Error(`Callback failed: ${res.status} ${text}`);
+  if (!response.ok) {
+    throw new Error(`Callback failed with HTTP ${response.status}: ${text.slice(0, 1000)}`);
   }
-
-  return text;
 }
+<<<<<<< Updated upstream
 async function runScraper() {
   return await new Promise((resolve, reject) => {
+=======
+
+function runScraper(batch, job) {
+  return new Promise((resolve, reject) => {
+>>>>>>> Stashed changes
     const payload = {
-      url: sourceUrl,
-      kvk,
-      companyName,
-      country,
-      timeout: timeoutMs,
-      userAgent,
+      url: batch.source_url || 'https://aid-register.ec.europa.eu/de-minimis',
+      kvk: job.kvk,
+      companyName: job.company_name || '',
+      country: batch.country || 'Netherlands',
+      timeout: Number(batch.timeout_ms || 30000),
+      userAgent: batch.user_agent || 'Mozilla/5.0 (compatible; Grantly DeMinimis Sync/1.2)',
     };
+<<<<<<< Updated upstream
 
     const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
     const args = ['src/eair_fetch.mjs', encoded];
 
     const proc = spawn('node', args, {
+=======
+    const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
+    const processHandle = spawn(process.execPath, ['src/eair_fetch.mjs', encoded], {
+>>>>>>> Stashed changes
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-
     let stdout = '';
     let stderr = '';
 
-    proc.stdout.on('data', (d) => {
-      stdout += d.toString();
+    processHandle.stdout.on('data', (data) => {
+      stdout += data.toString();
     });
-
-    proc.stderr.on('data', (d) => {
-      stderr += d.toString();
+    processHandle.stderr.on('data', (data) => {
+      stderr += data.toString();
     });
+    processHandle.on('error', reject);
+    processHandle.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(stderr || `Scraper exited with code ${code}`));
+        return;
+      }
 
+<<<<<<< Updated upstream
     proc.on('error', reject);
 
     proc.on('close', (code) => {
       resolve({ code, stdout, stderr });
+=======
+      try {
+        const parsed = JSON.parse(stdout.trim());
+        if (!parsed.success) {
+          reject(new Error(parsed.message || 'Scraper returned an unsuccessful response.'));
+          return;
+        }
+        resolve(parsed.records || []);
+      } catch (error) {
+        reject(new Error(`Invalid scraper JSON output: ${error.message}`));
+      }
+>>>>>>> Stashed changes
     });
   });
 }
 
+async function processJob(batch, job) {
+  if (!job.job_id || !job.customer_id || !job.kvk) {
+    throw new Error('Job requires job_id, customer_id and kvk.');
+  }
+
+  await postCallback(batch, {
+    job_id: Number(job.job_id),
+    customer_id: Number(job.customer_id),
+    status: 'running',
+    message: 'GitHub Actions batch scraper gestart.',
+  });
+
+  try {
+    const records = await runScraper(batch, job);
+    await postCallback(batch, {
+      job_id: Number(job.job_id),
+      customer_id: Number(job.customer_id),
+      status: 'success',
+      message: `${records.length} record(s) verwerkt.`,
+      records,
+    });
+    return true;
+  } catch (error) {
+    await postCallback(batch, {
+      job_id: Number(job.job_id),
+      customer_id: Number(job.customer_id),
+      status: 'error',
+      error_message: error.message || String(error),
+    });
+    console.error(`Job ${job.job_id} failed:`, error.message || String(error));
+    return false;
+  }
+}
+
 async function main() {
+<<<<<<< Updated upstream
   await postCallback({
     job_id: Number(jobId),
     customer_id: Number(customerId),
@@ -104,22 +160,31 @@ async function main() {
     });
 
     throw new Error(result.stderr || `Scraper exited with code ${result.code}`);
+=======
+  const batch = parseBatchPayload();
+  let succeeded = 0;
+  let failed = 0;
+
+  console.log(`Starting one worker batch with ${batch.jobs.length} job(s).`);
+  for (const job of batch.jobs) {
+    try {
+      if (await processJob(batch, job)) {
+        succeeded += 1;
+      } else {
+        failed += 1;
+      }
+    } catch (error) {
+      failed += 1;
+      console.error(`Job ${job?.job_id || 'unknown'} could not be processed:`, error.message || String(error));
+    }
+>>>>>>> Stashed changes
   }
 
-  let parsed;
-  try {
-    parsed = JSON.parse(result.stdout.trim());
-  } catch (err) {
-    await postCallback({
-      job_id: Number(jobId),
-      customer_id: Number(customerId),
-      status: 'error',
-      error_message: `Invalid scraper JSON output: ${err.message}`,
-      raw_output: (result.stdout || '').slice(0, 5000),
-    });
-
-    throw err;
+  console.log(`Batch complete. Succeeded: ${succeeded}; failed: ${failed}.`);
+  if (failed > 0) {
+    process.exitCode = 1;
   }
+<<<<<<< Updated upstream
 
   await postCallback({
     job_id: Number(jobId),
@@ -127,24 +192,11 @@ async function main() {
     status: 'success',
     result: parsed,
   });
+=======
+>>>>>>> Stashed changes
 }
 
-main().catch(async (err) => {
-  console.error('run-dispatch failed:', err);
-  console.error('message:', err?.message || String(err));
-  console.error('stack:', err?.stack || 'no stack');
-
-  try {
-    await postCallback({
-      job_id: Number(jobId || 0),
-      customer_id: Number(customerId || 0),
-      status: 'error',
-      error_message: err.message || String(err),
-    });
-  } catch (callbackErr) {
-    console.error('error callback failed:', callbackErr);
-    console.error('error callback message:', callbackErr?.message || String(callbackErr));
-  }
-
-  process.exit(1);
+main().catch((error) => {
+  console.error('Batch dispatch failed:', error.message || String(error));
+  process.exitCode = 1;
 });
