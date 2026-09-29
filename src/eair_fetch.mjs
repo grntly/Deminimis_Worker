@@ -60,7 +60,7 @@ const {
   companyName = '',
   country = 'Netherlands',
   timeout = 30000,
-  userAgent = 'Mozilla/5.0 (compatible; Grantly DeMinimis Sync/1.2.5)'
+  userAgent = 'Mozilla/5.0 (compatible; Grantly DeMinimis Worker/1.2.1)'
 } = payload;
 
 const browser = await chromium.launch({
@@ -74,67 +74,84 @@ const browser = await chromium.launch({
   process.exit(1);
 });
 
-try {
-const page = await browser.newPage({ userAgent });
-page.setDefaultTimeout(timeout);
-
-await page.goto(url, { waitUntil: 'domcontentloaded' });
-
-await page.waitForSelector('text=Country', { timeout });
-await page.waitForSelector('text=Beneficiary', { timeout });
-
-// Country accordion open
-const countrySection = page.locator('text=Country').first();
-await countrySection.click();
-await page.waitForTimeout(800);
-
-// zoek invulbaar inputveld binnen linker filterkolom
-const sidebar = page.locator('text=Filters').locator('..').locator('..');
-
-// pak eerste zichtbare invulbare input in filters
-const countryInput = sidebar.locator(
-  'input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([disabled])'
-).first();
-
-await countryInput.waitFor({ state: 'visible', timeout });
-await countryInput.click();
-await countryInput.fill(country);
-await page.keyboard.press('Enter');
-
-await page.waitForTimeout(1000);
-
-// Beneficiary accordion open
-const beneficiaryHeader = page.locator('text=Beneficiary').first();
-await beneficiaryHeader.click();
-await page.waitForTimeout(800);
-
-// Zoek het label "Beneficiary ID" en neem het eerstvolgende invulveld daaronder
-const beneficiaryIdLabel = page.locator('text=Beneficiary ID').first();
-await beneficiaryIdLabel.waitFor({ state: 'visible', timeout });
-
-const beneficiaryBlock = beneficiaryIdLabel.locator('xpath=ancestor::div[contains(@class,"eui-u-mb") or contains(@class,"row")][1]');
-let beneficiaryIdInput = beneficiaryBlock.locator(
-  'input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([disabled])'
-).first();
-
-// fallback als ancestor-structuur net anders is
-if (!(await beneficiaryIdInput.count())) {
-  beneficiaryIdInput = beneficiaryIdLabel.locator('xpath=following::input[not(@type="checkbox") and not(@type="radio") and not(@type="hidden")][1]');
+async function ensureAccordionOpen(headerLocator) {
+  await headerLocator.waitFor({ state: 'visible', timeout });
+  const expanded = await headerLocator.getAttribute('aria-expanded').catch(() => null);
+  if (expanded === 'true') {
+    return;
+  }
+  await headerLocator.click();
+  await headerLocator.page().waitForTimeout(800);
 }
 
-await beneficiaryIdInput.waitFor({ state: 'visible', timeout });
-await beneficiaryIdInput.click();
-await beneficiaryIdInput.fill(normalizeKvk(kvk));
+async function fillComboboxByLabel(page, labelText, value) {
+  const label = page.getByText(labelText, { exact: true }).first();
+  await label.waitFor({ state: 'visible', timeout });
+
+  const container = label.locator('xpath=ancestor::div[1]');
+  let input = container.locator(
+    'xpath=following::input[not(@type="checkbox") and not(@type="radio") and not(@type="hidden")][1]'
+  ).first();
+
+  if (!(await input.count())) {
+    input = page.locator(
+      'input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([disabled])'
+    ).first();
+  }
+
+  await input.waitFor({ state: 'visible', timeout });
+  await input.click();
+  await input.fill('');
+  await input.fill(value);
+  await page.waitForTimeout(500);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(800);
+}
+
+try {
+  const page = await browser.newPage({ userAgent });
+  page.setDefaultTimeout(timeout);
+
+  await page.goto(url, { waitUntil: 'networkidle' });
+
+  await page.waitForSelector('text=Country', { timeout });
+  await page.waitForSelector('text=Beneficiary', { timeout });
+
+  const countryHeader = page.getByText('Country', { exact: true }).first();
+  await ensureAccordionOpen(countryHeader);
+  await fillComboboxByLabel(page, 'Country', country);
+
+  const beneficiaryHeader = page.getByText('Beneficiary', { exact: true }).first();
+  await ensureAccordionOpen(beneficiaryHeader);
+
+  const beneficiaryIdLabel = page.getByText('Beneficiary ID', { exact: true }).first();
+  await beneficiaryIdLabel.waitFor({ state: 'visible', timeout });
+
+  let beneficiaryIdInput = beneficiaryIdLabel.locator(
+    'xpath=following::input[not(@type="checkbox") and not(@type="radio") and not(@type="hidden")][1]'
+  ).first();
+
+  if (!(await beneficiaryIdInput.count())) {
+    beneficiaryIdInput = page.locator(
+      'input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([disabled])'
+    ).last();
+  }
+
+  await beneficiaryIdInput.waitFor({ state: 'visible', timeout });
+  await beneficiaryIdInput.click();
+  await beneficiaryIdInput.fill(normalizeKvk(kvk));
+  await page.waitForTimeout(500);
 
   let searchButton = page.getByRole('button', { name: /search/i }).first();
 
   if (!(await searchButton.count())) {
     searchButton = page.locator('button').filter({ has: page.locator('svg') }).first();
   }
-  
+
   await searchButton.click();
 
-  await page.waitForLoadState('networkidle', { timeout: Math.min(timeout, 12000) }).catch(() => {});
+  await page.waitForLoadState('networkidle');
+  await page.waitForTimeout(1200);
 
   // Expand alle resultaten die een expand knop hebben
   const expandButtons = page.locator('button[aria-expanded]');
@@ -148,7 +165,7 @@ await beneficiaryIdInput.fill(normalizeKvk(kvk));
     } catch (_) {}
   }
 
-  await page.waitForTimeout(750);
+  await page.waitForTimeout(1000);
 
   const records = await page.evaluate(() => {
     const textOf = (el) => (el ? (el.textContent || '').replace(/\s+/g, ' ').trim() : '');

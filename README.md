@@ -4,7 +4,7 @@ Playwright-worker voor de De Minimis-module. Eén GitHub Actions-run of één HT
 
 ## GitHub Actions
 
-De workflow verwacht één `batch_payload` input met gedeelde callbackinstellingen, `concurrency` en een `jobs`-array. De Grantly-module maakt deze payload automatisch aan. De workflow gebruikt een vooraf ingerichte Playwright-container, zodat Chromium en de Linux-dependencies niet bij elke run opnieuw worden geïnstalleerd.
+De workflow verwacht één `batch_payload` input met gedeelde callbackinstellingen, `concurrency` en een `jobs`-array. De Grantly-module maakt deze payload automatisch aan. De workflow draait rechtstreeks op `ubuntu-latest`, zoals de snelle worker 1.0.0, en installeert daarna alleen Chromium met de vereiste systeemdependencies. Hierdoor hoeft GitHub Actions geen volledige Playwright-jobcontainer op te halen voordat de stappen kunnen starten.
 
 ## Cloud Run / HTTP
 

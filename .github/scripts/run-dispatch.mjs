@@ -53,7 +53,7 @@ function runScraper(batch, job) {
       companyName: job.company_name || '',
       country: batch.country || 'Netherlands',
       timeout: Number(batch.timeout_ms || 30000),
-      userAgent: batch.user_agent || 'Mozilla/5.0 (compatible; Grantly DeMinimis Sync/1.2.5)',
+      userAgent: batch.user_agent || 'Mozilla/5.0 (compatible; Grantly DeMinimis Worker/1.2.1)',
     };
     const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
     const processHandle = spawn(process.execPath, ['src/eair_fetch.mjs', encoded], {
@@ -91,6 +91,7 @@ function runScraper(batch, job) {
 }
 
 async function processJob(batch, job) {
+  const startedAt = Date.now();
   await postCallback(batch, {
     job_id: Number(job.job_id),
     customer_id: Number(job.customer_id),
@@ -107,6 +108,7 @@ async function processJob(batch, job) {
       message: `${records.length} record(s) verwerkt.`,
       records,
     });
+    console.log(`Job ${job.job_id} completed in ${((Date.now() - startedAt) / 1000).toFixed(1)}s.`);
     return true;
   } catch (error) {
     await postCallback(batch, {
@@ -116,11 +118,13 @@ async function processJob(batch, job) {
       error_message: error.message || String(error),
       records: [],
     });
+    console.error(`Job ${job.job_id} failed after ${((Date.now() - startedAt) / 1000).toFixed(1)}s.`);
     return false;
   }
 }
 
 async function main() {
+  const batchStartedAt = Date.now();
   const batch = parseBatchPayload();
   const requestedConcurrency = Number.parseInt(batch.concurrency, 10);
   const concurrency = Number.isFinite(requestedConcurrency)
@@ -152,7 +156,10 @@ async function main() {
   const workerCount = Math.min(concurrency, batch.jobs.length);
   await Promise.all(Array.from({ length: workerCount }, () => processNextJobs()));
 
-  console.log(`Batch complete. Succeeded: ${succeeded}; failed: ${failed}.`);
+  console.log(
+    `Batch complete in ${((Date.now() - batchStartedAt) / 1000).toFixed(1)}s. `
+      + `Succeeded: ${succeeded}; failed: ${failed}.`
+  );
   if (failed > 0) {
     process.exitCode = 1;
   }

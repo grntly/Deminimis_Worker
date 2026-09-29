@@ -27,7 +27,7 @@ function runScraper(batch, job) {
       companyName: job.company_name || '',
       country: batch.country || 'Netherlands',
       timeout: batch.timeout_ms || 30000,
-      userAgent: batch.user_agent || 'Mozilla/5.0 (compatible; Grantly DeMinimis Sync/1.2.5)',
+      userAgent: batch.user_agent || 'Mozilla/5.0 (compatible; Grantly DeMinimis Worker/1.2.1)',
     };
     const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
     const child = spawn(process.execPath, ['src/eair_fetch.mjs', encoded], {
