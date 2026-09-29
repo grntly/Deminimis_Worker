@@ -60,7 +60,7 @@ const {
   companyName = '',
   country = 'Netherlands',
   timeout = 30000,
-  userAgent = 'Mozilla/5.0 (compatible; Grantly DeMinimis Sync/1.2)'
+  userAgent = 'Mozilla/5.0 (compatible; Grantly DeMinimis Sync/1.2.4)'
 } = payload;
 
 const browser = await chromium.launch({
@@ -151,9 +151,6 @@ await beneficiaryIdInput.fill(normalizeKvk(kvk));
   await page.waitForTimeout(1000);
 
   const records = await page.evaluate(() => {
-<<<<<<< Updated upstream
-    const textOf = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
-=======
     const textOf = (el) => (el ? (el.textContent || '').replace(/\s+/g, ' ').trim() : '');
 
     const afterLabelInBrowser = (text, label) => {
@@ -192,9 +189,6 @@ await beneficiaryIdInput.fill(normalizeKvk(kvk));
           const href = toAbsoluteUrl(anchor.getAttribute('href'));
           const label = [
             textOf(anchor),
-
-
-            
             anchor.getAttribute('aria-label') || '',
             anchor.getAttribute('title') || '',
             anchor.getAttribute('href') || ''
@@ -258,7 +252,6 @@ await beneficiaryIdInput.fill(normalizeKvk(kvk));
 
       return scored[0] && scored[0].score > -50 ? scored[0].href : window.location.href;
     };
->>>>>>> Stashed changes
 
     const cards = Array.from(document.querySelectorAll('div,section,article,li'))
       .filter((el) => {
@@ -268,17 +261,13 @@ await beneficiaryIdInput.fill(normalizeKvk(kvk));
 
     return cards.map((card) => {
       const text = textOf(card);
-
-      const find = (label) => {
-        const rx = new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*(.+?)(?=(Reference number:|Beneficiary name:|Beneficiary ID:|Beneficiary type of ID:|Aid amount in EUR:|Sector of activity \\(NACE\\):|Aid instrument:|Granting authority name:|Granting date:|Published date:|$))', 'i');
-        const m = text.match(rx);
-        return m ? m[1].trim() : '';
-      };
-
       const heading = card.querySelector('h1,h2,h3,h4,h5,strong,b');
+      const referenceNumber = afterLabelInBrowser(text, 'Reference number:');
+
       return {
         heading: textOf(heading),
-        fullText: text
+        fullText: text,
+        sourceUrl: findAwardSourceUrl(card, referenceNumber)
       };
     });
   });
@@ -323,7 +312,7 @@ await beneficiaryIdInput.fill(normalizeKvk(kvk));
       aid_instrument: aidInstrument,
       granting_date: parseDate(grantingDate),
       published_date: parseDate(publishedDate),
-      source_url: url
+      source_url: row.sourceUrl || url
     };
   }).filter((r) => r.beneficiary_identifier === normalizeKvk(kvk));
 

@@ -22,6 +22,10 @@ function parseBatchPayload() {
     throw new Error('Batch payload cannot contain more than 100 jobs.');
   }
 
+  if (payload.jobs.some((job) => !job.job_id || !job.customer_id || !job.kvk)) {
+    throw new Error('Every job requires job_id, customer_id and kvk.');
+  }
+
   return payload;
 }
 
@@ -40,32 +44,20 @@ async function postCallback(batch, body) {
     throw new Error(`Callback failed with HTTP ${response.status}: ${text.slice(0, 1000)}`);
   }
 }
-<<<<<<< Updated upstream
-async function runScraper() {
-  return await new Promise((resolve, reject) => {
-=======
 
 function runScraper(batch, job) {
   return new Promise((resolve, reject) => {
->>>>>>> Stashed changes
     const payload = {
       url: batch.source_url || 'https://aid-register.ec.europa.eu/de-minimis',
       kvk: job.kvk,
       companyName: job.company_name || '',
       country: batch.country || 'Netherlands',
       timeout: Number(batch.timeout_ms || 30000),
-      userAgent: batch.user_agent || 'Mozilla/5.0 (compatible; Grantly DeMinimis Sync/1.2)',
+      userAgent: batch.user_agent || 'Mozilla/5.0 (compatible; Grantly DeMinimis Sync/1.2.4)',
     };
-<<<<<<< Updated upstream
-
-    const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
-    const args = ['src/eair_fetch.mjs', encoded];
-
-    const proc = spawn('node', args, {
-=======
     const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
     const processHandle = spawn(process.execPath, ['src/eair_fetch.mjs', encoded], {
->>>>>>> Stashed changes
+      cwd: process.cwd(),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stdout = '';
@@ -84,12 +76,6 @@ function runScraper(batch, job) {
         return;
       }
 
-<<<<<<< Updated upstream
-    proc.on('error', reject);
-
-    proc.on('close', (code) => {
-      resolve({ code, stdout, stderr });
-=======
       try {
         const parsed = JSON.parse(stdout.trim());
         if (!parsed.success) {
@@ -100,16 +86,11 @@ function runScraper(batch, job) {
       } catch (error) {
         reject(new Error(`Invalid scraper JSON output: ${error.message}`));
       }
->>>>>>> Stashed changes
     });
   });
 }
 
 async function processJob(batch, job) {
-  if (!job.job_id || !job.customer_id || !job.kvk) {
-    throw new Error('Job requires job_id, customer_id and kvk.');
-  }
-
   await postCallback(batch, {
     job_id: Number(job.job_id),
     customer_id: Number(job.customer_id),
@@ -133,34 +114,13 @@ async function processJob(batch, job) {
       customer_id: Number(job.customer_id),
       status: 'error',
       error_message: error.message || String(error),
+      records: [],
     });
-    console.error(`Job ${job.job_id} failed:`, error.message || String(error));
     return false;
   }
 }
 
 async function main() {
-<<<<<<< Updated upstream
-  await postCallback({
-    job_id: Number(jobId),
-    customer_id: Number(customerId),
-    status: 'running',
-    message: 'GitHub Actions scraper gestart',
-  });
-
-  const result = await runScraper();
-
-  if (result.code !== 0) {
-    await postCallback({
-      job_id: Number(jobId),
-      customer_id: Number(customerId),
-      status: 'error',
-      error_message: result.stderr || `Scraper exited with code ${result.code}`,
-      raw_output: (result.stdout || '').slice(0, 5000),
-    });
-
-    throw new Error(result.stderr || `Scraper exited with code ${result.code}`);
-=======
   const batch = parseBatchPayload();
   let succeeded = 0;
   let failed = 0;
@@ -175,25 +135,14 @@ async function main() {
       }
     } catch (error) {
       failed += 1;
-      console.error(`Job ${job?.job_id || 'unknown'} could not be processed:`, error.message || String(error));
+      console.error(`Job ${job.job_id} could not be processed:`, error.message || String(error));
     }
->>>>>>> Stashed changes
   }
 
   console.log(`Batch complete. Succeeded: ${succeeded}; failed: ${failed}.`);
   if (failed > 0) {
     process.exitCode = 1;
   }
-<<<<<<< Updated upstream
-
-  await postCallback({
-    job_id: Number(jobId),
-    customer_id: Number(customerId),
-    status: 'success',
-    result: parsed,
-  });
-=======
->>>>>>> Stashed changes
 }
 
 main().catch((error) => {
