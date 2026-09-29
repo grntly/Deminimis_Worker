@@ -53,7 +53,7 @@ function runScraper(batch, job) {
       companyName: job.company_name || '',
       country: batch.country || 'Netherlands',
       timeout: Number(batch.timeout_ms || 30000),
-      userAgent: batch.user_agent || 'Mozilla/5.0 (compatible; Grantly DeMinimis Sync/1.2.4)',
+      userAgent: batch.user_agent || 'Mozilla/5.0 (compatible; Grantly DeMinimis Sync/1.2.5)',
     };
     const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
     const processHandle = spawn(process.execPath, ['src/eair_fetch.mjs', encoded], {
@@ -122,22 +122,35 @@ async function processJob(batch, job) {
 
 async function main() {
   const batch = parseBatchPayload();
+  const requestedConcurrency = Number.parseInt(batch.concurrency, 10);
+  const concurrency = Number.isFinite(requestedConcurrency)
+    ? Math.max(1, Math.min(requestedConcurrency, 5))
+    : 3;
   let succeeded = 0;
   let failed = 0;
+  let nextIndex = 0;
 
-  console.log(`Starting one worker batch with ${batch.jobs.length} job(s).`);
-  for (const job of batch.jobs) {
-    try {
-      if (await processJob(batch, job)) {
-        succeeded += 1;
-      } else {
+  async function processNextJobs() {
+    while (nextIndex < batch.jobs.length) {
+      const job = batch.jobs[nextIndex];
+      nextIndex += 1;
+
+      try {
+        if (await processJob(batch, job)) {
+          succeeded += 1;
+        } else {
+          failed += 1;
+        }
+      } catch (error) {
         failed += 1;
+        console.error(`Job ${job.job_id} could not be processed:`, error.message || String(error));
       }
-    } catch (error) {
-      failed += 1;
-      console.error(`Job ${job.job_id} could not be processed:`, error.message || String(error));
     }
   }
+
+  console.log(`Starting one worker batch with ${batch.jobs.length} job(s), concurrency ${concurrency}.`);
+  const workerCount = Math.min(concurrency, batch.jobs.length);
+  await Promise.all(Array.from({ length: workerCount }, () => processNextJobs()));
 
   console.log(`Batch complete. Succeeded: ${succeeded}; failed: ${failed}.`);
   if (failed > 0) {

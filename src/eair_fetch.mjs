@@ -60,7 +60,7 @@ const {
   companyName = '',
   country = 'Netherlands',
   timeout = 30000,
-  userAgent = 'Mozilla/5.0 (compatible; Grantly DeMinimis Sync/1.2.4)'
+  userAgent = 'Mozilla/5.0 (compatible; Grantly DeMinimis Sync/1.2.5)'
 } = payload;
 
 const browser = await chromium.launch({
@@ -78,7 +78,7 @@ try {
 const page = await browser.newPage({ userAgent });
 page.setDefaultTimeout(timeout);
 
-await page.goto(url, { waitUntil: 'networkidle' });
+await page.goto(url, { waitUntil: 'domcontentloaded' });
 
 await page.waitForSelector('text=Country', { timeout });
 await page.waitForSelector('text=Beneficiary', { timeout });
@@ -134,7 +134,7 @@ await beneficiaryIdInput.fill(normalizeKvk(kvk));
   
   await searchButton.click();
 
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('networkidle', { timeout: Math.min(timeout, 12000) }).catch(() => {});
 
   // Expand alle resultaten die een expand knop hebben
   const expandButtons = page.locator('button[aria-expanded]');
@@ -148,7 +148,7 @@ await beneficiaryIdInput.fill(normalizeKvk(kvk));
     } catch (_) {}
   }
 
-  await page.waitForTimeout(1000);
+  await page.waitForTimeout(750);
 
   const records = await page.evaluate(() => {
     const textOf = (el) => (el ? (el.textContent || '').replace(/\s+/g, ' ').trim() : '');

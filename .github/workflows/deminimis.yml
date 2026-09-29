@@ -11,21 +11,18 @@ jobs:
   scrape:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    container:
+      image: mcr.microsoft.com/playwright:v1.53.0-jammy
+      options: --ipc=host
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
       - name: Install dependencies
-        run: npm install
-
-      - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: npm install --omit=dev --no-audit --no-fund
 
       - name: Run batch scraper in one runner
         env:

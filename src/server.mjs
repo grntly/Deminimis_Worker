@@ -27,7 +27,7 @@ function runScraper(batch, job) {
       companyName: job.company_name || '',
       country: batch.country || 'Netherlands',
       timeout: batch.timeout_ms || 30000,
-      userAgent: batch.user_agent || 'Mozilla/5.0 (compatible; Grantly DeMinimis Sync/1.2.4)',
+      userAgent: batch.user_agent || 'Mozilla/5.0 (compatible; Grantly DeMinimis Sync/1.2.5)',
     };
     const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
     const child = spawn(process.execPath, ['src/eair_fetch.mjs', encoded], {
@@ -92,6 +92,7 @@ function normalizeBatch(payload) {
     country: payload.country,
     timeout_ms: payload.timeout_ms,
     user_agent: payload.user_agent,
+    concurrency: payload.concurrency,
     jobs: [{
       job_id: payload.job_id,
       customer_id: payload.customer_id,
@@ -158,13 +159,27 @@ app.post('/jobs/deminimis', async (req, res) => {
   });
 
   (async () => {
-    for (const job of batch.jobs) {
-      try {
-        await processJob(batch, job);
-      } catch (error) {
-        console.error(`Worker job ${job.job_id} failed:`, error.message || String(error));
+    const requestedConcurrency = Number.parseInt(batch.concurrency, 10);
+    const concurrency = Number.isFinite(requestedConcurrency)
+      ? Math.max(1, Math.min(requestedConcurrency, 5))
+      : 3;
+    let nextIndex = 0;
+
+    async function processNextJobs() {
+      while (nextIndex < batch.jobs.length) {
+        const job = batch.jobs[nextIndex];
+        nextIndex += 1;
+
+        try {
+          await processJob(batch, job);
+        } catch (error) {
+          console.error(`Worker job ${job.job_id} failed:`, error.message || String(error));
+        }
       }
     }
+
+    const workerCount = Math.min(concurrency, batch.jobs.length);
+    await Promise.all(Array.from({ length: workerCount }, () => processNextJobs()));
   })().catch((error) => {
     console.error('Detached worker batch failed:', error);
   });
