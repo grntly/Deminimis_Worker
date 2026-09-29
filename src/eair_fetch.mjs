@@ -60,7 +60,7 @@ const {
   companyName = '',
   country = 'Netherlands',
   timeout = 30000,
-  userAgent = 'Mozilla/5.0 (compatible; Grantly DeMinimis Sync/1.2)'
+  userAgent = 'Mozilla/5.0 (compatible; Grantly DeMinimis Worker/1.2.1)'
 } = payload;
 
 const browser = await chromium.launch({
@@ -89,10 +89,14 @@ async function fillComboboxByLabel(page, labelText, value) {
   await label.waitFor({ state: 'visible', timeout });
 
   const container = label.locator('xpath=ancestor::div[1]');
-  let input = container.locator('xpath=following::input[not(@type="checkbox") and not(@type="radio") and not(@type="hidden")][1]').first();
+  let input = container.locator(
+    'xpath=following::input[not(@type="checkbox") and not(@type="radio") and not(@type="hidden")][1]'
+  ).first();
 
   if (!(await input.count())) {
-    input = page.locator('input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([disabled])').first();
+    input = page.locator(
+      'input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([disabled])'
+    ).first();
   }
 
   await input.waitFor({ state: 'visible', timeout });
@@ -138,10 +142,17 @@ try {
   await beneficiaryIdInput.fill(normalizeKvk(kvk));
   await page.waitForTimeout(500);
 
+  await beneficiaryIdInput.waitFor({ state: 'visible', timeout });
+  await beneficiaryIdInput.click();
+  await beneficiaryIdInput.fill(normalizeKvk(kvk));
+  await page.waitForTimeout(500);
+
   let searchButton = page.getByRole('button', { name: /search/i }).first();
   if (!(await searchButton.count())) {
     searchButton = page.locator('button').filter({ has: page.locator('svg') }).first();
   }
+
+  await searchButton.click();
 
   await searchButton.click();
   await page.waitForLoadState('networkidle');

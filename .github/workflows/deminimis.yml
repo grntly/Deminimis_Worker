@@ -1,43 +1,16 @@
-name: Deminimis Scraper
+name: Deminimis Batch Scraper
 
 on:
   workflow_dispatch:
     inputs:
-      job_id:
-        description: "Sync job ID"
+      batch_payload:
+        description: "JSON payload containing shared callback settings and one or more jobs"
         required: true
-      customer_id:
-        description: "Customer ID"
-        required: true
-      kvk:
-        description: "KVK number"
-        required: true
-      company_name:
-        description: "Company name"
-        required: false
-      callback_url:
-        description: "Callback URL"
-        required: true
-      callback_token:
-        description: "Callback token"
-        required: true
-      source_url:
-        description: "Source URL"
-        required: false
-      country:
-        description: "Country"
-        required: false
-      timeout_ms:
-        description: "Timeout in ms"
-        required: false
-      user_agent:
-        description: "User agent"
-        required: false
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 120
 
     steps:
       - name: Checkout
@@ -49,21 +22,14 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: npm install --omit=dev --no-audit --no-fund
 
-      - name: Install Playwright browsers
+      - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
-      - name: Run scraper
+      - name: Run batch scraper in one runner
         env:
-          CALLBACK_URL: ${{ github.event.inputs.callback_url }}
-          CALLBACK_TOKEN: ${{ github.event.inputs.callback_token }}
-          JOB_ID: ${{ github.event.inputs.job_id }}
-          CUSTOMER_ID: ${{ github.event.inputs.customer_id }}
-          KVK: ${{ github.event.inputs.kvk }}
-          COMPANY_NAME: ${{ github.event.inputs.company_name }}
-          SOURCE_URL: ${{ github.event.inputs.source_url }}
-          COUNTRY: ${{ github.event.inputs.country }}
-          TIMEOUT_MS: ${{ github.event.inputs.timeout_ms }}
-          USER_AGENT: ${{ github.event.inputs.user_agent }}
+          BATCH_PAYLOAD: ${{ github.event.inputs.batch_payload }}
         run: node .github/scripts/run-dispatch.mjs
