@@ -142,18 +142,22 @@ try {
   await beneficiaryIdInput.fill(normalizeKvk(kvk));
   await page.waitForTimeout(500);
 
-  let searchButton = page.getByRole('button', { name: /search/i }).first();
+  await beneficiaryIdInput.waitFor({ state: 'visible', timeout });
+  await beneficiaryIdInput.click();
+  await beneficiaryIdInput.fill(normalizeKvk(kvk));
+  await page.waitForTimeout(500);
 
+  let searchButton = page.getByRole('button', { name: /search/i }).first();
   if (!(await searchButton.count())) {
     searchButton = page.locator('button').filter({ has: page.locator('svg') }).first();
   }
 
   await searchButton.click();
 
+  await searchButton.click();
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1200);
 
-  // Expand alle resultaten die een expand knop hebben
   const expandButtons = page.locator('button[aria-expanded]');
   const btnCount = await expandButtons.count();
   for (let i = 0; i < btnCount; i++) {
